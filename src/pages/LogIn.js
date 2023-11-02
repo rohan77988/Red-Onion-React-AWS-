@@ -1,35 +1,31 @@
 import React from 'react';
 import { FormContainer, MainDiv } from '../components/styles/StyleSignUp';
-import * as firebase from 'firebase/app';
-import 'firebase/auth';
 import logo from '../Image/logo2.png';
 import bg from '../Image/bg2.png';
 import { Link, useHistory, useLocation } from 'react-router-dom';
-import { FaFacebookSquare, FaGoogle } from 'react-icons/fa';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.min.css';
 import { useState } from 'react';
 import { useDispatch } from 'react-redux';
-import firebaseConfig from '../components/firebase/firebase.config';
-import { loggedInUser } from '../redux/actions';
+import axios from "axios";
+
+import { setUserSession } from './service/AuthService';
+import {use} from "bcrypt/promises";
+const loginUrl = 'https://vgho7nfraj.execute-api.ap-south-1.amazonaws.com/prod/login';
 
 const LogIn = () => {
 	const history = useHistory();
 	const location = useLocation();
-	const { from } = location.state || { from: { pathname: '/cart' } };
-	//firebase initialize
-	if (!firebase.apps.length) {
-		firebase.initializeApp(firebaseConfig);
-	}
-	//redux
+	const { from } = location.state || { from: { pathname: '/home' } };
+	const [errorMessage, setErrorMessage] = useState(null);
+
 	const dispatch = useDispatch();
-	//state
-	const [ user, setUser ] = useState({
-		email    : '',
-		password : ''
+
+	const [user, setUser] = useState({
+		username: '',
+		password: ''
 	});
 
-	//handle input data
 	const handleInput = (e) => {
 		setUser({
 			...user,
@@ -37,69 +33,49 @@ const LogIn = () => {
 		});
 	};
 
-	const setUserToken = () => {
-		firebase
-			.auth()
-			.currentUser.getIdToken(true)
-			.then(function (idToken) {
-				sessionStorage.setItem('token', idToken);
-				console.log(idToken);
-			})
-			.catch(function (error) {
-				alert(error.message);
-			});
-	};
-
-	//google login handle
-	var provider = new firebase.auth.GoogleAuthProvider();
-	const googleLogin = () => {
-		firebase
-			.auth()
-			.signInWithPopup(provider)
-			.then(function (result) {
-				dispatch(loggedInUser(result.user));
-				toast.success('Logged In Successfully');
-				setUserToken();
-				history.replace(from);
-			})
-			.catch(function (error) {
-				toast.error(error.message);
-			});
-	};
-
-	//facebook login handle
-	var fbProvider = new firebase.auth.FacebookAuthProvider();
-	const fbLogin = () => {
-		firebase
-			.auth()
-			.signInWithPopup(fbProvider)
-			.then(function (result) {
-				dispatch(loggedInUser(result.user));
-				toast.success('Logged In Successfully');
-
-				history.replace(from);
-			})
-			.catch(function (error) {
-				toast.error(error.message);
-			});
-	};
-
-	//on form submit
-	const handleForm = (e) => {
+	const handleForm = async (e) => {
 		e.preventDefault();
-		if (!user.email && !user.password) {
+		console.log('Handling form submission...');
+
+		if (!user.username || !user.password) {
+
+			console.log('Username or password missing.');
+
 			document.getElementById('error').innerText = 'Enter All Values Correctly';
-		}
-		else {
-			firebase
-				.auth()
-				.signInWithEmailAndPassword(user.email, user.password)
-				.then((result) => {
-					dispatch(loggedInUser(result.user));
-					history.replace(from);
+		} else {
+			console.log('Sending request...');
+
+			const requestConfig = {
+				headers: {
+					'x-api-key': '7bkvyA9WPL1ZcpvC0MbLRaXFUeRRfSp83QmikVZo'
+				}
+			};
+			const requestBody = {
+				username: user.username,
+				password: user.password.trim()
+			};
+	console.log(user.password);
+			axios
+				.post(loginUrl, requestBody, requestConfig)
+				.then((response) => {
+					// Check for a successful login status (you may need to customize this)
+					if (response.status === 200) {
+						// Redirect to the home page
+						setUserSession(response.data.user,response.data.token);
+						history.push('/');
+					} else {
+						// Handle other cases here
+						setErrorMessage('Login failed. Please check your credentials.');
+					}
 				})
 				.catch((error) => {
-					document.getElementById('error').innerText = error.message;
+					if (error.response.status === 401 || error.response.status === 403) {
+						toast.error('Login failed. Please check your credentials', {
+							position: 'top-right',
+							autoClose: 3000, // Adjust the duration for which the message is displayed
+						});					} else {
+						setErrorMessage('Sorry! Backend Server is down');
+					}
 				});
 		}
 	};
@@ -116,12 +92,12 @@ const LogIn = () => {
 							</Link>
 							<div className="form-group">
 								<input
-									type="email"
-									name="email"
+									type="text"
+									name="username"
 									className="form-control"
 									onChange={handleInput}
-									value={user.email}
-									placeholder="Email"
+									value={user.username}
+									placeholder="Username"
 								/>
 							</div>
 							<div className="form-group">
@@ -148,27 +124,21 @@ const LogIn = () => {
 								</p>
 							</Link>
 						</form>
-						<p className="text-center">
-							<strong>Or Login with</strong>
-						</p>
-						<div className="social-media d-flex justify-content-center">
-							<FaFacebookSquare onClick={fbLogin} className="icon fb" />
-							<FaGoogle onClick={googleLogin} className="icon google" />
-							<ToastContainer
-								position="top-center"
-								autoClose={2000}
-								hideProgressBar={false}
-								newestOnTop={false}
-								closeOnClick
-								rtl={false}
-								pauseOnFocusLoss
-								draggable
-								pauseOnHover
-							/>
-						</div>
+						<ToastContainer
+							position="top-center"
+							autoClose={2000}
+							hideProgressBar={false}
+							newestOnTop={false}
+							closeOnClick
+							rtl={false}
+							pauseOnFocusLoss
+							draggable
+							pauseOnHover
+						/>
 					</div>
 				</div>
 			</FormContainer>
+			{errorMessage && <p className="errorMessage">{errorMessage}</p>}
 		</MainDiv>
 	);
 };
